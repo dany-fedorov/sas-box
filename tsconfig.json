@@ -1,0 +1,17 @@
+{
+  "extends": "@tsconfig/strictest/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "outDir": "./dist",
+    "declaration": true,
+    "module": "commonjs",
+    "target": "es2022",
+    "paths": {},
+    "ignoreDeprecations": "5.0"
+  },
+  "include": [
+    "src",
+    "examples",
+    "tests"
+  ]
+}

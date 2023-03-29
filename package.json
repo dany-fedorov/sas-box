@@ -16,9 +16,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/dany-fedorov/sasbox.git"
+    "url": "git://github.com/dany-fedorov/sas-box.git"
   },
-  "homepage": "https://dany-fedorov.github.io/sasbox",
+  "homepage": "https://dany-fedorov.github.io/sas-box",
   "publishConfig": {
     "access": "public"
   },

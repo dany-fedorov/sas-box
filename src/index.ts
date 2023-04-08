@@ -55,7 +55,7 @@ export class SasBox<T> {
   assertHasSync(): this {
     if (!this.hasSync()) {
       throw new SasBoxAssertionError(
-        `SasBox "${this.alias}" has no "sync" method.`,
+        `SasBox#assertHasSync: SasBox "${this.alias}" has no "sync" method.`,
       );
     }
     return this;

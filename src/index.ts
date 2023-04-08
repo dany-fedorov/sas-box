@@ -52,12 +52,13 @@ export class SasBox<T> {
     };
   }
 
-  assertHasSync(): void {
+  assertHasSync(): this {
     if (!this.hasSync()) {
       throw new SasBoxAssertionError(
         `SasBox "${this.alias}" has no "sync" method.`,
       );
     }
+    return this;
   }
 
   getSasBoxSync(): ISasBoxSync<T> {

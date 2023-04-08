@@ -19,8 +19,8 @@ export class SasBoxAssertionError extends Error {
 export class SasBox<T> {
   static ANONYMOUS_SAS_BOX_ALIAS = '<<Anonymous SasBox>>';
 
-  static fromSync<T>(sync: () => T, alias?: string): SasBox<T> {
-    return new SasBox(sync, () => Promise.resolve(sync()), alias);
+  static fromSync<T>(sync: () => T, alias?: string): SasBoxSync<T> {
+    return new SasBoxSync(sync, () => Promise.resolve(sync()), alias);
   }
 
   static fromAsync<T>(async: () => Promise<T>, alias?: string): SasBox<T> {
@@ -52,13 +52,13 @@ export class SasBox<T> {
     };
   }
 
-  assertHasSync(): this {
+  assertHasSync(): SasBoxSync<T> {
     if (!this.hasSync()) {
       throw new SasBoxAssertionError(
         `SasBox#assertHasSync: SasBox "${this.alias}" has no "sync" method.`,
       );
     }
-    return this;
+    return this as SasBoxSync<T>;
   }
 
   getSasBoxSync(): ISasBoxSync<T> {
@@ -73,5 +73,23 @@ export class SasBox<T> {
     return {
       async: this.async,
     };
+  }
+}
+
+export class SasBoxSync<T> extends SasBox<T> implements ISasBoxSync<T> {
+  declare sync: () => T;
+
+  static ANONYMOUS_SAS_BOX_SYNC_ALIAS = '<<Anonymous SasBoxSync>>';
+
+  constructor(
+    sync: () => T,
+    async: () => Promise<T>,
+    alias: string = SasBoxSync.ANONYMOUS_SAS_BOX_SYNC_ALIAS,
+  ) {
+    super(sync, async, alias);
+  }
+
+  override hasSync(): true {
+    return super.hasSync() as true;
   }
 }

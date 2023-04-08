@@ -1,6 +1,6 @@
 {
   "name": "sas-box",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Sas Box.",
   "main": "./index.js",
   "scripts": {

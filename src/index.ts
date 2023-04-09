@@ -16,21 +16,21 @@ export class SasBoxAssertionError extends Error {
   }
 }
 
-export class SasBox<T> {
-  static ANONYMOUS_SAS_BOX_ALIAS = '<<Anonymous SasBox>>';
+export class SasBoxAsync<T> {
+  static ANONYMOUS_ALIAS = '<<Anonymous SasBox.Async>>';
 
   static fromSync<T>(sync: () => T, alias?: string): SasBoxSync<T> {
     return new SasBoxSync(sync, () => Promise.resolve(sync()), alias);
   }
 
-  static fromAsync<T>(async: () => Promise<T>, alias?: string): SasBox<T> {
-    return new SasBox(null, async, alias);
+  static fromAsync<T>(async: () => Promise<T>, alias?: string): SasBoxAsync<T> {
+    return new SasBoxAsync(null, async, alias);
   }
 
   constructor(
     public readonly sync: (() => T) | null,
     public readonly async: () => Promise<T>,
-    public readonly alias: string = SasBox.ANONYMOUS_SAS_BOX_ALIAS,
+    public readonly alias: string = SasBoxAsync.ANONYMOUS_ALIAS,
   ) {}
 
   hasSync(): boolean {
@@ -61,7 +61,7 @@ export class SasBox<T> {
     return this as SasBoxSync<T>;
   }
 
-  getSasBoxSync(): ISasBoxSync<T> {
+  getAsSasBoxSync(): ISasBoxSync<T> {
     this.assertHasSync();
     return {
       sync: this.sync!,
@@ -69,22 +69,24 @@ export class SasBox<T> {
     };
   }
 
-  getSasBoxAsync(): ISasBoxAsync<T> {
+  getAsSasBoxAsync(): ISasBoxAsync<T> {
     return {
       async: this.async,
     };
   }
 }
 
-export class SasBoxSync<T> extends SasBox<T> implements ISasBoxSync<T> {
+export class SasBoxSync<T> extends SasBoxAsync<T> implements ISasBoxSync<T> {
   declare sync: () => T;
 
-  static ANONYMOUS_SAS_BOX_SYNC_ALIAS = '<<Anonymous SasBoxSync>>';
+  static override ANONYMOUS_ALIAS = '<<Anonymous SasBox.Sync>>';
+
+  static override fromAsync: never;
 
   constructor(
     sync: () => T,
     async: () => Promise<T>,
-    alias: string = SasBoxSync.ANONYMOUS_SAS_BOX_SYNC_ALIAS,
+    alias: string = SasBoxSync.ANONYMOUS_ALIAS,
   ) {
     super(sync, async, alias);
   }
@@ -92,4 +94,17 @@ export class SasBoxSync<T> extends SasBox<T> implements ISasBoxSync<T> {
   override hasSync(): true {
     return super.hasSync() as true;
   }
+
+  override assertHasSync(): this {
+    return super.assertHasSync() as this;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export namespace SasBox {
+  export const Sync = SasBoxSync;
+  export type Sync<T> = SasBoxSync<T>;
+
+  export const Async = SasBoxAsync;
+  export type Async<T> = SasBoxAsync<T>;
 }

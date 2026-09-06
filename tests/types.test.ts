@@ -1,7 +1,9 @@
-import { expect, test } from 'bun:test';
+import { beforeAll, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import ts = require('typescript');
 
+const packageRoot = resolve(__dirname, '..');
 const options: ts.CompilerOptions = {
   strict: true,
   noEmit: true,
@@ -12,6 +14,18 @@ const options: ts.CompilerOptions = {
   module: ts.ModuleKind.CommonJS,
   types: [],
 };
+
+beforeAll(() => {
+  const build = spawnSync('npm', ['run', 'build'], {
+    cwd: packageRoot,
+    encoding: 'utf8',
+  });
+
+  if (build.error) throw build.error;
+  if (build.status !== 0) {
+    throw new Error(`Package build failed:\n${build.stdout}\n${build.stderr}`);
+  }
+});
 
 function diagnostics(path: string) {
   const program = ts.createProgram([path], options);

@@ -52,7 +52,7 @@ export class SasBoxUnknown<T> {
 
   constructor(
     sync: (() => T) | undefined,
-    async: () => PromiseLike<Awaited<T>>,
+    async: () => PromiseLike<T | Awaited<T>>,
     public readonly alias: string = SasBoxUnknown.ANONYMOUS_ALIAS,
   ) {
     this.sync = sync;
@@ -145,7 +145,7 @@ export class SasBoxSync<T> extends SasBoxUnknown<T> implements ISasBoxSync<T> {
 
   constructor(
     sync: () => T,
-    async: () => PromiseLike<Awaited<T>>,
+    async: () => PromiseLike<T | Awaited<T>>,
     alias: string = SasBoxSync.ANONYMOUS_ALIAS,
   ) {
     super(sync, async, alias);

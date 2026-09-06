@@ -1,11 +1,11 @@
 export type ISasBoxSync<T> = {
   sync: () => T;
-  async: () => Promise<T>;
+  async: () => Promise<Awaited<T>>;
 };
 
 export type ISasBoxAsync<T> = {
   sync?: never | undefined;
-  async: () => Promise<T>;
+  async: () => Promise<Awaited<T>>;
 };
 
 export type ISasBox<T> = ISasBoxSync<T> | ISasBoxAsync<T>;
@@ -16,42 +16,67 @@ export class SasBoxAssertionError extends Error {
   }
 }
 
+function invokeAsPromise<T>(
+  callback: () => T,
+  thisArg: unknown,
+): Promise<Awaited<T>> {
+  try {
+    return Promise.resolve(callback.call(thisArg));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
 export class SasBoxUnknown<T> {
   static ANONYMOUS_ALIAS = '<<Anonymous SasBox.Unknown>>';
 
   static fromSync<T>(sync: () => T, alias?: string): SasBoxSync<T> {
-    return new SasBoxSync(sync, () => Promise.resolve(sync()), alias);
+    return new SasBoxSync(sync, () => invokeAsPromise(sync, undefined), alias);
   }
 
   static fromAsync<T>(
-    async: () => Promise<T>,
+    async: () => PromiseLike<T>,
     alias?: string,
-  ): SasBoxUnknown<T> {
-    return new SasBoxUnknown(undefined, async, alias);
+  ): SasBoxAsync<Awaited<T>> {
+    return new SasBoxAsync<Awaited<T>>(
+      function normalizedFromAsync(this: unknown) {
+        return invokeAsPromise(async, this);
+      },
+      alias,
+    );
   }
 
+  public readonly sync: (() => T) | undefined;
+
+  public readonly async: () => Promise<Awaited<T>>;
+
   constructor(
-    public readonly sync: (() => T) | undefined,
-    public readonly async: () => Promise<T>,
+    sync: (() => T) | undefined,
+    async: () => PromiseLike<Awaited<T>>,
     public readonly alias: string = SasBoxUnknown.ANONYMOUS_ALIAS,
-  ) {}
+  ) {
+    this.sync = sync;
+    this.async = function normalizedAsync(this: unknown) {
+      return invokeAsPromise(async, this);
+    };
+  }
 
   hasSync(): boolean {
     return typeof this.sync === 'function';
   }
 
-  resolveSyncFirst(thisArg: any = null): Promise<T> {
+  resolveSyncFirst(thisArg: unknown = null): Promise<Awaited<T>> {
     return this.getSyncFirstResolver(thisArg)();
   }
 
-  getSyncFirstResolver(thisArg: any = null): () => Promise<T> {
+  getSyncFirstResolver(thisArg: unknown = null): () => Promise<Awaited<T>> {
     const syncHere = this.sync;
     const asyncHere = this.async;
     return function sasBoxSyncFirstResolver() {
       if (syncHere !== undefined) {
-        return Promise.resolve(syncHere.call(thisArg));
+        return invokeAsPromise(syncHere, thisArg);
       }
-      return asyncHere.call(thisArg);
+      return invokeAsPromise(asyncHere, thisArg);
     };
   }
 
@@ -90,10 +115,16 @@ export class SasBoxAsync<T>
   static override fromAsync: never;
 
   constructor(
-    async: () => Promise<T>,
-    alias: string = SasBoxSync.ANONYMOUS_ALIAS,
+    async: () => PromiseLike<T>,
+    alias: string = SasBoxAsync.ANONYMOUS_ALIAS,
   ) {
-    super(undefined, async, alias);
+    super(
+      undefined,
+      function normalizedAsyncConstructor(this: unknown) {
+        return invokeAsPromise(async, this);
+      },
+      alias,
+    );
   }
 
   override hasSync(): false {
@@ -114,7 +145,7 @@ export class SasBoxSync<T> extends SasBoxUnknown<T> implements ISasBoxSync<T> {
 
   constructor(
     sync: () => T,
-    async: () => Promise<T>,
+    async: () => PromiseLike<Awaited<T>>,
     alias: string = SasBoxSync.ANONYMOUS_ALIAS,
   ) {
     super(sync, async, alias);
@@ -139,4 +170,19 @@ export namespace SasBox {
 
   export const Sync = SasBoxSync;
   export type Sync<T> = SasBoxSync<T>;
+
+  export function fromSync<T>(sync: () => T, alias?: string): SasBoxSync<T> {
+    return SasBoxUnknown.fromSync(sync, alias);
+  }
+
+  export function fromAsync<T>(
+    async: () => PromiseLike<T>,
+    alias?: string,
+  ): SasBoxAsync<Awaited<T>> {
+    return SasBoxUnknown.fromAsync(async, alias);
+  }
+
+  export function fromValue<T>(value: T, alias?: string): SasBoxSync<T> {
+    return SasBoxUnknown.fromSync(() => value, alias);
+  }
 }

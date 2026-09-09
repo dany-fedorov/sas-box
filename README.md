@@ -66,159 +66,119 @@ those policies outside the box.
 
 ## Why sas-box exists
 
-### The problem
+**The useful pattern is an explicit sync/async provider capability.** It earns
+its place when independently written producers must serve both synchronous
+and asynchronous hosts. Ordinary application factories rarely need it: DI Bag
+already accepts synchronous factories and Promise-returning factories directly.
 
-An API that sometimes returns a value and sometimes a Promise forces every
-caller to sniff the result or to `await` it. Sniffing spreads
-`instanceof Promise` checks through consumer code. Awaiting turns a value that
-was available immediately into one that is not, and some consumers cannot
-await at all. Node.js `'exit'` listeners
-["must only perform synchronous operations"](https://nodejs.org/api/process.html#event-exit).
-React's `useSyncExternalStore` calls `getSnapshot` during render and compares
-[its return value with `Object.is`](https://react.dev/reference/react/useSyncExternalStore).
-`Symbol.dispose`, constructors, and getters have no place to put an `await`.
+A return type such as `T | Promise<T>` describes the result of calling a
+function. A box describes which acquisition routes are available **before
+calling it**. That matters when invoking an unsuitable plugin could already
+start I/O or other side effects. `SasBox.Sync<Settings>` lets a synchronous
+host require a route returning `Settings`; `SasBox.Unknown<Settings>` lets an
+async host accept either kind of producer.
 
-Isaac Schlueter's
-["don't release Zalgo"](https://blog.izs.me/2013/08/designing-apis-for-asynchrony/)
-rule and Havoc Pennington's
-[earlier post](https://blog.ometer.com/2011/07/24/callbacks-synchronous-and-asynchronous/)
-say a callback "should be either always sync or always async, as a documented
-part of the API contract". They do not say how to describe a producer that can
-honestly offer both.
+The guarantee is about the declared callback return type. A
+`SasBox.Sync<Promise<Settings>>` is legal and returns a Promise synchronously;
+it does not prove that the eventual settings are ready. `hasSync()` is a
+boolean check; use `assertHasSync()` for a narrowed capability. Neither checks
+freshness, prevents exceptions, or makes an async-only operation synchronous.
 
-`sas-box` describes the producer's capability rather than one result. A box
-carries up to two routes with fixed shapes: `sync()` is always synchronous and
-`async()` always returns a native Promise. The consumer picks a route, and the
-producer never changes shape between calls. Which routes exist is part of the
-static type. `SasBox.Sync<T>` proves both routes, `SasBox.Async<T>` proves that
-`sync` is absent, and `SasBox.Unknown<T>` defers the question to `hasSync()`
-when the answer depends on runtime state, such as a cache being warm.
+### Production precedents
 
-### What it buys
+These are established uses of the pattern, not evidence that these projects
+use `sas-box` itself. Sources were checked on 2026-09-10.
 
-- **A compile-time claim that a synchronous route exists.** Effect's
-  `runSync`, Zod's `parse`, and InversifyJS's `get` all discover "sync
-  consumer, async value" at runtime and throw
-  ([Effect](https://effect.website/docs/getting-started/running-effects/),
-  [Zod](https://zod.dev/api),
-  [Inversify](https://inversify.io/docs/api/container/)). A consumer that
-  requires `SasBox.Sync<T>` rejects an async-only producer at the type level
-  instead. The precedent is .NET, where `Lazy<T>` and
-  [`AsyncLazy<T>`](https://devblogs.microsoft.com/pfxteam/asynclazyt/) are
-  distinct types.
-- **Sync-to-async adaptation without Zalgo.** `fromSync(fn).async()` calls
-  `fn` synchronously and turns its return or throw into a settled Promise,
-  which is what the standard
-  [`Promise.try`](https://tc39.es/proposal-promise-try/) does. Direct
-  `sync()` calls keep throwing synchronously, so neither route lies about when
-  its error arrives.
-- **Sync-first as a deliberate performance choice.** `resolveSyncFirst()`
-  takes the sync route when it exists and the async route otherwise, always
-  returning a Promise. Sass documents that its synchronous `compile` is
-  ["almost twice as fast as compileAsync"](https://sass-lang.com/documentation/js-api/functions/compileasync/)
-  because making evaluation asynchronous has a cost. A producer that has the
-  value now should not be forced through the microtask queue.
-- **Capability without policy.** The box does not memoize, share, or own
-  anything. Dagger keeps caching in a separate
-  [`Lazy<T>`](https://dagger.dev/api/latest/dagger/Lazy.html) type rather
-  than in `Provider<T>`. A dependency injection scope or a cache decides
-  lifetime here for the same reason.
-
-### Where it fits in production
-
-1. **Warm-cache fast paths.** Configuration, secrets, and feature flags are
-   cached in memory and refreshed over the network. A `SasBox.Unknown<T>` lets
-   a hot request path take the sync route when the cache is warm and lets
-   startup code await `async()` when it is cold.
-2. **Portable service graphs.** The same graph can read a schema with
-   `readFileSync` on Node.js (`SasBox.Sync`) and with `fetch` in a browser
-   (`SasBox.Async`). Wiring the browser producer into a slot that requires
-   the sync route is a compile-time error.
-3. **Synchronous consumers fed by an async-capable graph.** Process exit
-   handlers, `Symbol.dispose`, and synchronous store snapshots need values
-   that are available now. Requiring a sync-capable box turns "should be
-   available by then" into a type.
-4. **Plugin capability declarations.** A host that accepts third-party
-   providers can type a slot as `SasBox.Sync<T>` where synchronous access is
-   mandatory and as `SasBox.Unknown<T>` where either route is acceptable.
-   Prettier 3 removed its synchronous API and users had to reach for the
-   separate [`@prettier/sync`](https://github.com/prettier/prettier-synchronized)
-   package. A declared capability makes that kind of loss visible before it
-   ships.
-
-### Prior art
-
-| Pattern | What it establishes |
+| Example | Relevant pattern and difference |
 | --- | --- |
-| [`Symbol.dispose` / `Symbol.asyncDispose`](https://tc39.es/proposal-explicit-resource-management/) and [`Symbol.iterator` / `Symbol.asyncIterator`](https://tc39.es/ecma262/#sec-getiterator) | One object, two capability slots. `await using` and `for await` look for the async slot and adapt the sync slot into a Promise when it is the only one present, which is the shape of `SasBox.Unknown`. |
-| [`Promise.try`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/try) | Calls the function synchronously and settles a Promise from its return or throw. `fromSync(fn).async()` has the same semantics. |
-| [`Atomics.waitAsync`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/waitAsync) | Returns `{ async: false, value }` or `{ async: true, value: Promise }`. The language reports whether a result was available synchronously instead of hiding it behind a union. |
-| [`Effect.sync` / `Effect.promise`](https://effect.website/docs/getting-started/creating-effects/) and [`Effect.runSync`](https://effect.website/docs/getting-started/running-effects/) | Sync and async are distinct constructors; `runSync` throws when the effect "involves asynchronous work". |
-| [InversifyJS `get` / `getAsync`](https://inversify.io/docs/api/container/) | A DI container with two resolution routes; a sync `get` of an async binding throws "Unexpected asynchronous service". |
-| [dotnet/runtime#65656](https://github.com/dotnet/runtime/issues/65656) and the [.NET DI guidelines](https://learn.microsoft.com/en-us/dotnet/core/extensions/dependency-injection-guidelines) | Async resolution "isn't supported"; the open proposal asks for a distinct async return type because adding it later touches the whole pipeline. |
-| [`Lazy<T>` vs `AsyncLazy<T>`](https://devblogs.microsoft.com/pfxteam/asynclazyt/) | Sync and async lazies are distinct types; the async one composes the sync one with a Task. |
-| [Node.js `fs`](https://nodejs.org/api/fs.html), [`sass`](https://sass-lang.com/documentation/js-api/functions/compileasync/), [`glob`](https://github.com/isaacs/node-glob), [`execa`](https://github.com/sindresorhus/execa) | Dual sync/async APIs are the norm for libraries whose consumers include both kinds of callers. |
-| [Rollup `MaybePromise<T>`](https://github.com/rollup/rollup/blob/master/src/rollup/types.d.ts), [Vitest `Awaitable<T>`](https://github.com/vitest-dev/vitest/blob/main/packages/utils/src/types.ts) | The lighter alternative: a union the consumer always awaits. Sufficient whenever no consumer needs the sync route. |
+| [gensync](https://github.com/loganfsmyth/gensync) and [Babel's transform implementation](https://github.com/babel/babel/blob/main/packages/babel-core/src/transform.ts) | Babel runs shared transformation logic through sync and async entry points. gensync accepts separate implementations and supplies execution helpers. This is the closest architectural precedent; sas-box only describes and selects a zero-argument acquisition, without a generator runner or combinators. |
+| [Sass importer types](https://sass-lang.com/documentation/js-api/interfaces/importer/) | `Importer<'sync'>` works in synchronous and asynchronous compilation; `Importer<'async'>` requires asynchronous compilation. This directly supports declaring plugin capabilities in types. |
+| [InversifyJS `get` / `getAsync`](https://inversify.io/docs/api/container/) | Synchronous resolution requires synchronous bindings. sas-box can express the producer capability at a boundary; DI Bag's ordinary factory return types already express the distinction inside its graph. |
+| [ECMAScript `Promise.try`](https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-promise.try) | Calling a callback immediately and turning either its return or throw into a Promise is a standard operation. `fromSync(fn).async()` packages that adaptation beside the original callback. |
 
-### Limits and non-goals
+### Where it fits with DI Bag
 
-- If every consumer can await, a `Promise<T>` or a `T | Promise<T>` union with
-  `await` is simpler, and it is what Rollup, Vite, Vitest, and Fastify do. The
-  box only pays for itself when a consumer must prove or choose the
-  synchronous route.
-- Most DI containers avoid the problem by policy. Microsoft's guidelines say
-  to "keep DI factories fast and synchronous", Autofac's maintainers
-  [decline `ResolveAsync`](https://github.com/autofac/Autofac/issues/1215),
-  Awilix says to
-  [create the container when everything is ready](https://github.com/jeffijoe/awilix/issues/12),
-  and NestJS
-  [awaits async providers at bootstrap](https://docs.nestjs.com/fundamentals/async-providers).
-  A bootstrap-only async phase makes this package unnecessary. Lazily
-  acquired async services next to synchronous ones are what it exists for.
-- `fromSync(fn).async()` duplicates `Promise.try(fn)` on runtimes that have
-  it. The value of the box is the capability slots and the static variants,
-  not that helper.
-- The platform's fallback direction is async-first: `await using` tries
-  `Symbol.asyncDispose` before `Symbol.dispose`. `resolveSyncFirst()`
-  deliberately prefers sync for the performance reason above. Consumers that
-  must never run work synchronously should call `async()` directly.
-- A producer that already ships both a sync and an async function gains
-  nothing from wrapping them. The box is for the consumer side of a boundary
-  where the producer's capability is not otherwise visible in the type.
+1. **Build-tool or plugin hosts with two execution modes.** A config loader,
+   compiler input, or schema provider can expose both routes. A synchronous CLI
+   or build hook requires `SasBox.Sync<T>`; a server host selects the async route
+   so a genuinely asynchronous implementation can avoid blocking I/O. The host
+   owns that choice, and the plugin need not depend on DI Bag.
+2. **Interchangeable local and remote implementations.** A bundled schema can
+   use `fromValue`; a remote schema can use `fromAsync`. A host with a stable
+   Promise-based service contract accepts both. This helps when several plugins
+   share the protocol; a single local factory is usually simpler unboxed.
+3. **A captured cache result with an explicit fallback.** A producer can create
+   a box whose sync callback closes over a cached value, or whose `sync` field
+   is `undefined` on a miss. This requires a new box for a new capability state:
+   a cold box does not gain `sync` after `async()` completes. TTLs, refresh,
+   deduplication, and the decision to accept stale data belong to the producer.
+   If all callers can await, an ordinary cache loader is enough.
 
-### Use with DI Bag
-
-[DI Bag](https://github.com/dany-fedorov/di-bag) ships a structural adapter,
-`fromSasBox(registration, { mode })`, on its `di-bag/sas-box` entry. The
-adapter does not import this package; any object with the `sync`/`async`
-shape works. The `mode` is mandatory and is checked against the producer's
-static type:
+The adapter is structural and adds no runtime dependency on `sas-box`:
 
 ```ts
 import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { DiBag } from 'di-bag/node';
 import { fromSasBox } from 'di-bag/sas-box';
 import { SasBox } from 'sas-box';
 
-type Settings = { port: number };
-
-const settings = fromSasBox(
-  () => SasBox.fromSync((): Settings => JSON.parse(readFileSync('settings.json', 'utf8'))),
-  { mode: 'sync' }, // a SasBox.Async producer here is a compile-time error
-);
-const remote = fromSasBox(
-  () => SasBox.fromAsync(async (): Promise<Settings> => (await fetch('/settings')).json()),
-  { mode: 'sync-first' }, // Promise<Settings>; uses sync() when the box has one
+// A plugin exposes both implementations; it need not know about DI Bag.
+const fileSource = new SasBox.Sync(
+  () => readFileSync('settings.json', 'utf8'),
+  () => readFile('settings.json', 'utf8'),
+  'settings-file',
 );
 
-const bag = DiBag.begin().add({ settings, remote }).end();
-bag.resolve('settings').port; // number, no await
-(await bag.resolve('remote')).port; // number
+// The host chooses the route at composition time.
+const bag = DiBag.begin().add({
+  cliSettings: fromSasBox(() => fileSource, { mode: 'sync' }),
+  serverSettings: fromSasBox(() => fileSource, { mode: 'async' }),
+}).end();
+
+const cliText: string = bag.resolve('cliSettings');
+const serverText: string = await bag.resolve('serverSettings');
 await bag.close();
 ```
 
-`sync` keeps the raw synchronous result, including a returned Promise's
-identity. `async` and `sync-first` await the box and return a native Promise.
-The bag, not the box, memoizes the result per scope and owns cleanup when the
-registration is wrapped with `DiBag.withDisposal`. See the
-[DI Bag box adapter reference](https://github.com/dany-fedorov/di-bag/blob/main/docs/guides/api-reference.md#optional-box-adapters).
+This example expects a `settings.json` file. An async-only box cannot replace
+`fileSource` in the `mode: 'sync'` registration without a type error.
+
+| Adapter mode | Contract |
+| --- | --- |
+| `sync` | The source must immediately expose `sync()`. Its raw result is preserved, including a Promise if that is what it returns. |
+| `async` | Await the source box, call `async()`, and return a native Promise of the awaited result. |
+| `sync-first` | Await the source box, prefer callable `sync`, otherwise call `async`; the result is still a native Promise. |
+
+The bag applies its configured lifetime to the adapted result; the default
+shares an acquisition within the bag. The box itself never memoizes, and
+separate registrations do not automatically share an acquisition. Adapters
+preserve existing ownership but add none: `withDisposal` around the source owns
+the source box, while `withDisposal` around the adapted provider owns that stage’s acquired
+value (the fulfilled payload for normal Promise acquisition). See the [box adapter guide](https://github.com/dany-fedorov/di-bag/blob/main/docs/guides/tutorial.md#optional-box-adapters).
+
+### When it is unnecessary or misleading
+
+- **Ordinary DI wiring:** use `() => T` or `() => Promise<T>` directly. When all
+  callers can await, `() => T | PromiseLike<T>` also suffices. If asynchronous
+  work only happens at startup, resolve it before building the graph; a box
+  does not improve a value that is already available.
+- **One integration:** a small `{ sync, async }` object or a direct
+  `DiBag.mapSync` / `mapAsync` projection may be enough. The package earns its
+  dependency through shared constructors, capability views, and consistent
+  error normalization across producers, not through exclusive functionality.
+- **Nonblocking execution:** `fromSync(fn).async()` invokes `fn` immediately
+  and wraps its completion. It cannot move blocking work off the event loop.
+- **A universal fast path:** `resolveSyncFirst()` and DI Bag's `sync-first`
+  return Promises; they do not preserve a synchronous consumer path or eliminate
+  awaiting. Choosing a cheaper implementation can help, but measure it. Sass
+  itself documents different preferences for [`sass` and `sass-embedded`](https://sass-lang.com/documentation/js-api/#speed).
+- **A lifecycle or readiness abstraction:** the box offers no caching,
+  cancellation, retries, disposal, reactive updates, or startup barrier. A sync
+  callback can still fail, and the two implementations must honor the same
+  application-level contract.
+
+**Assessment:** there is a defensible niche for a small capability wrapper at
+reusable plugin boundaries. There is little additional value in wrapping every
+DI Bag registration. Keep the protocol small and introduce it where consumers
+actually need to choose or require an acquisition mode.

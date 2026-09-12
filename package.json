@@ -1,18 +1,24 @@
 {
   "name": "sas-box",
-  "version": "0.0.7",
-  "description": "Sas Box.",
-  "main": "./index.js",
+  "version": "0.1.0",
+  "description": "Explicit synchronous and asynchronous acquisition capabilities.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "test": "NODE_OPTIONS='--stack-trace-limit=1000' ./node_modules/.bin/jest",
+    "test": "bun test",
+    "typecheck": "tsc -p ./tsconfig.json",
     "build": "tsc -p ./tsconfig.build.json",
-    "prepare-me": "rm -rf ./npm-module-build && npm run build",
-    "prepublish-me": "npm run prepare-me && rm -fr ./npm-module-build && mv dist ./npm-module-build && cp package.json ./npm-module-build && cp README.md ./npm-module-build",
-    "publish-me": "npm run prepublish-me && cd npm-module-build && npm publish --access public --registry https://registry.npmjs.org/",
-    "postpublish-me": "rm -fr npm-module-build",
-    "build-watch": "chokidar './src/**/*.ts' -c 'npm run build' -i './node_modules/**/*' --initial",
-    "ts-file": "ts-node -r tsconfig-paths/register -T -s",
-    "test-ci": "npm run test -- --ci --coverage"
+    "check": "npm run typecheck && npm test && npm run build",
+    "prepack": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -29,15 +35,7 @@
   "author": "Dany Fedorov",
   "license": "MIT",
   "devDependencies": {
-    "@tsconfig/strictest": "^1.0.2",
-    "@typescript-eslint/eslint-plugin": "5.47.1",
-    "@typescript-eslint/parser": "5.48.1",
-    "eslint": "8.31.0",
-    "eslint-config-prettier": "8.6.0",
-    "eslint-plugin-import": "2.26.0",
-    "prettier": "2.8.1",
-    "ts-node": "^10.8.2",
-    "tsconfig-paths": "^4.1.0",
-    "typescript": "^5.0.2"
+    "@types/bun": "1.4.1",
+    "typescript": "5.9.3"
   }
 }

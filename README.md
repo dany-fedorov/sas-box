@@ -4,6 +4,8 @@
 asynchronously, or through either capability. It does not cache acquisitions or
 own acquired resources.
 
+[View `sas-box` on npm](https://www.npmjs.com/package/sas-box).
+
 See [Why sas-box exists](#why-sas-box-exists) for the problem it solves,
 production uses, prior art, and its limits.
 
@@ -114,13 +116,13 @@ use `sas-box` itself. Sources were checked on 2026-09-10.
    deduplication, and the decision to accept stale data belong to the producer.
    If all callers can await, an ordinary cache loader is enough.
 
-The adapter is structural and adds no runtime dependency on `sas-box`:
+DI Bag 0.1 does not include a `sas-box` adapter. Register the selected
+acquisition route explicitly:
 
 ```ts
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { DiBag } from 'di-bag/node';
-import { fromSasBox } from 'di-bag/sas-box';
 import { SasBox } from 'sas-box';
 
 // A plugin exposes both implementations; it need not know about DI Bag.
@@ -131,10 +133,12 @@ const fileSource = new SasBox.Sync(
 );
 
 // The host chooses the route at composition time.
-const bag = DiBag.begin().add({
-  cliSettings: fromSasBox(() => fileSource, { mode: 'sync' }),
-  serverSettings: fromSasBox(() => fileSource, { mode: 'async' }),
-}).end();
+const bag = DiBag.createBuilder()
+  .register({
+    cliSettings: () => fileSource.sync(),
+    serverSettings: () => fileSource.async(),
+  })
+  .build();
 
 const cliText: string = bag.resolve('cliSettings');
 const serverText: string = await bag.resolve('serverSettings');
@@ -142,20 +146,13 @@ await bag.close();
 ```
 
 This example expects a `settings.json` file. An async-only box cannot replace
-`fileSource` in the `mode: 'sync'` registration without a type error.
+`fileSource` in `cliSettings` without a type error because it has no callable
+`sync` route.
 
-| Adapter mode | Contract |
-| --- | --- |
-| `sync` | The source must immediately expose `sync()`. Its raw result is preserved, including a Promise if that is what it returns. |
-| `async` | Await the source box, call `async()`, and return a native Promise of the awaited result. |
-| `sync-first` | Await the source box, prefer callable `sync`, otherwise call `async`; the result is still a native Promise. |
-
-The bag applies its configured lifetime to the adapted result; the default
-shares an acquisition within the bag. The box itself never memoizes, and
-separate registrations do not automatically share an acquisition. Adapters
-preserve existing ownership but add none: `withDisposal` around the source owns
-the source box, while `withDisposal` around the adapted provider owns that stage’s acquired
-value (the fulfilled payload for normal Promise acquisition). See the [box adapter guide](https://github.com/dany-fedorov/di-bag/blob/main/docs/guides/tutorial.md#optional-box-adapters).
+DI Bag applies its configured lifetime to each registered result; the default
+shares an acquisition within the bag. The box itself never memoizes, and the two
+registrations above do not share an acquisition automatically. Wrap a
+registration in `DiBag.withDisposal` when the bag should own its acquired value.
 
 ### When it is unnecessary or misleading
 
@@ -163,14 +160,14 @@ value (the fulfilled payload for normal Promise acquisition). See the [box adapt
   callers can await, `() => T | PromiseLike<T>` also suffices. If asynchronous
   work only happens at startup, resolve it before building the graph; a box
   does not improve a value that is already available.
-- **One integration:** a small `{ sync, async }` object or a direct
-  `DiBag.mapSync` / `mapAsync` projection may be enough. The package earns its
+- **One integration:** a small `{ sync, async }` object or an explicit
+  projection factory may be enough. The package earns its
   dependency through shared constructors, capability views, and consistent
   error normalization across producers, not through exclusive functionality.
 - **Nonblocking execution:** `fromSync(fn).async()` invokes `fn` immediately
   and wraps its completion. It cannot move blocking work off the event loop.
-- **A universal fast path:** `resolveSyncFirst()` and DI Bag's `sync-first`
-  return Promises; they do not preserve a synchronous consumer path or eliminate
+- **A universal fast path:** `resolveSyncFirst()` returns a Promise; it does not
+  preserve a synchronous consumer path or eliminate
   awaiting. Choosing a cheaper implementation can help, but measure it. Sass
   itself documents different preferences for [`sass` and `sass-embedded`](https://sass-lang.com/documentation/js-api/#speed).
 - **A lifecycle or readiness abstraction:** the box offers no caching,

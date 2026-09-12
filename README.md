@@ -1,16 +1,25 @@
 # sas-box
 
-Declare how an agent host can acquire a tool's inputs before running its provider.
+Small, typed provider contracts for agentic development.
 
-`sas-box` gives agent runtimes and tool plugins a typed contract for acquiring
-tool definitions, configuration, and context synchronously, asynchronously, or
-both. A local validation step can require a synchronous provider; a running agent
-can await a remote provider through the same interface. The host can inspect the
-available route before invoking code that may start I/O.
+`sas-box` separates a feature from how its inputs are acquired. A module accepts
+one typed provider contract; another module supplies a value, a synchronous
+loader, or an asynchronous implementation. Humans and coding agents can work on
+the consumer and provider separately, check their contracts, and exercise the
+feature with a small local fixture.
 
-- Declare a provider's capabilities in its TypeScript type.
-- Supply separate sync and async implementations when both are available.
-- Adapt values, callbacks, and thenables with consistent Promise behavior.
+- **[Modularity for context engineering](#modularity-for-context-engineering).**
+  Put acquisition behind an explicit boundary. A coding agent changing a feature
+  can work with its provider type and tests, without loading the storage or
+  transport implementation into its working context.
+- **[TypeScript for quick evals](#typescript-for-quick-evals).**
+  Check payload types and required acquisition modes before starting the
+  application. Replace external providers with deterministic fixtures for
+  behavioral checks.
+- **[Programmable provider capabilities](#programmable-provider-capabilities).**
+  Inspect acquisition modes without invoking providers. Combine those
+  capabilities with application-defined metadata to build catalogs, validation
+  tools, and execution policies.
 
 ## Install
 
@@ -21,58 +30,150 @@ npm install sas-box
 Includes TypeScript declarations, CommonJS and ESM import support, and no runtime
 dependencies.
 
-## Quick start: local and remote tool definitions
+## Modularity for context engineering
+
+A shipping feature needs rates; its provider owns how those rates are obtained.
+The feature exposes a quote function and never reaches into provider internals.
 
 ```ts
+import assert from 'node:assert/strict';
 import { SasBox } from 'sas-box';
 
-const tool = SasBox.fromValue({ name: 'search', readOnly: true }, 'search-tool');
-console.log(tool.sync().name); // 'search'
+type Rates = { shippingCents: number; freeShippingFromCents: number };
 
-const generated = SasBox.fromSync(() => 42);
-console.log(generated.sync()); // 42
-generated.async().then(console.log); // 42
+function createQuote(rates: SasBox.Unknown<Rates>) {
+  return async (subtotalCents: number): Promise<number> => {
+    const current = await rates.async();
+    return subtotalCents + (
+      subtotalCents >= current.freeShippingFromCents ? 0 : current.shippingCents
+    );
+  };
+}
 
-const remote = SasBox.fromAsync(async () => ({ name: 'search', readOnly: true }));
-remote.async().then((value) => console.log(value.name)); // 'search'
-console.log(remote.sync); // undefined
+async function main() {
+  const fixture = SasBox.fromValue({
+    shippingCents: 500, freeShippingFromCents: 5000,
+  });
+  const quote = createQuote(fixture);
+  assert.equal(await quote(2500), 3000);
+  assert.equal(await quote(6000), 6000);
+
+  // In-memory implementation of an asynchronous provider.
+  const alternate = SasBox.fromAsync(async () => ({
+    shippingCents: 300, freeShippingFromCents: 4000,
+  }));
+  assert.equal(await createQuote(alternate)(2500), 2800);
+  console.log('Shipping feature passed with both providers');
+}
+
+void main().catch(error => { console.error(error); process.exitCode = 1; });
 ```
 
-Each call is an acquisition attempt. `fromValue` returns the supplied value
-by identity; callbacks may produce a different value on every invocation.
-The async callback above is an in-memory fixture; replace it with your tool
-registry request in an application.
+In separate modules, export `Rates`, `createQuote`, and the selected provider.
+A task to change quoting rules can include the feature contract and its tests;
+a task to change rate loading can focus on the provider. The shared boundary
+makes that smaller context practical. Module layout and context selection remain
+application decisions.
 
-## Require a capability at an agent host boundary
+The example runs without a server, network connection, or dependency container.
+Each invocation acquires rates again; the box does not cache. A cached provider
+must implement its own sharing and freshness rules.
 
-A synchronous host accepts `SasBox.Sync<T>`. A host that can await accepts
-`SasBox.Unknown<T>`, which includes both sync-capable and async-only providers.
+## TypeScript for quick evals
+
+A synchronous build step requires `SasBox.Sync<Rates>`. An asynchronous feature
+can accept `SasBox.Unknown<Rates>`. These requirements are checked before either
+provider runs.
 
 ```ts
+import assert from 'node:assert/strict';
 import { SasBox } from 'sas-box';
 
-type ToolDefinition = { name: string; readOnly: boolean };
+type Rates = { shippingCents: number };
 
-function validateTool(provider: SasBox.Sync<ToolDefinition>): string {
-  return provider.sync().name;
+function buildShippingLabel(source: SasBox.Sync<Rates>): string {
+  return `Shipping: ${source.sync().shippingCents} cents`;
 }
 
-async function loadTool(provider: SasBox.Unknown<ToolDefinition>): Promise<string> {
-  return (await provider.async()).name;
+const fixture = SasBox.fromValue({ shippingCents: 500 });
+const asynchronous = SasBox.fromAsync(async () => ({ shippingCents: 500 }));
+
+function rejectedContracts() {
+  // @ts-expect-error An async-only provider cannot satisfy a sync consumer.
+  buildShippingLabel(asynchronous);
+  // @ts-expect-error The provider payload must contain numeric shippingCents.
+  const wrongPayload: SasBox.Unknown<Rates> = SasBox.fromValue({ shippingCents: '500' });
+  return wrongPayload;
 }
 
-const bundled = SasBox.fromValue({ name: 'search', readOnly: true });
-const hosted = SasBox.fromAsync(async () => ({ name: 'search', readOnly: true }));
-
-console.log(validateTool(bundled)); // 'search'
-loadTool(hosted).then(console.log); // 'search'
-// validateTool(hosted) is a type error: hosted has no synchronous route.
+assert.equal(buildShippingLabel(fixture), 'Shipping: 500 cents');
+console.log('Synchronous provider contract passed');
 ```
 
-A callback typed `() => T | Promise<T>` describes what it might return after
-invocation. A box makes the available routes inspectable before invocation.
-A tool validation hook can reject an async-only provider before it starts I/O.
-The `readOnly` field is application data; the box does not verify or enforce it.
+Save each example in its own `example.ts` file. To check it:
+
+```sh
+npm install --save-dev typescript @types/node
+npx tsc --noEmit --strict --skipLibCheck --target ES2022 --module Node16 --moduleResolution Node16 example.ts
+```
+
+Run a checked example with `bun example.ts`, or compile it without
+`--noEmit` and run `node example.js`. Bun execution alone does not type-check.
+
+The uncalled `rejectedContracts` function demonstrates rejected replacements.
+Each `@ts-expect-error` also requires the compiler to find an error on that
+line. Remove the directive to inspect the diagnostic. Type checking evaluates
+the declared contract; assertions evaluate selected behavior. Neither establishes
+that a real remote provider is correct or available.
+
+## Programmable provider capabilities
+
+A host can build tooling from a provider's `alias` and `hasSync()` result
+without loading its value. Application-defined metadata can describe ownership
+or purpose alongside the box.
+
+```ts
+import assert from 'node:assert/strict';
+import { SasBox } from 'sas-box';
+
+type DescribedProvider<T> = {
+  metadata: { owner: string; purpose: string };
+  provider: SasBox.Unknown<T>;
+};
+
+let acquisitions = 0;
+const rates: DescribedProvider<{ shippingCents: number }> = {
+  metadata: { owner: 'checkout', purpose: 'shipping rates' },
+  provider: SasBox.fromSync(() => {
+    acquisitions++;
+    return { shippingCents: 500 };
+  }, 'shipping-rates'),
+};
+
+function describe<T>(entry: DescribedProvider<T>) {
+  return {
+    ...entry.metadata,
+    alias: entry.provider.alias,
+    syncAvailable: entry.provider.hasSync(),
+  };
+}
+
+assert.deepEqual(describe(rates), {
+  owner: 'checkout',
+  purpose: 'shipping rates',
+  alias: 'shipping-rates',
+  syncAvailable: true,
+});
+assert.equal(acquisitions, 0);
+console.log(describe(rates));
+```
+
+The metadata record belongs to the application; `sas-box` supplies the
+inspectable acquisition contract. A catalog can group providers by owner, and a
+sync-only host can reject an incompatible provider before calling it.
+`hasSync()` reports a capability, not readiness, cost, health, or permission.
+Use the return value of `assertHasSync()` when the caller needs a statically
+narrowed sync provider.
 
 ## Supply separate implementations
 

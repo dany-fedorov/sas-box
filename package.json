@@ -1,7 +1,7 @@
 {
   "name": "sas-box",
   "version": "0.1.1",
-  "description": "Declare sync and async acquisition capabilities for agent tools and TypeScript plugin hosts.",
+  "description": "Typed sync and async provider contracts for modular features, quick evals, and programmable tooling.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

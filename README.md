@@ -2,35 +2,20 @@
 
 Typed sync/async acquisition contracts for agentic development, LLM harnesses, and agent graphs.
 
-`sas-box` separates a feature from how its inputs are acquired. A module accepts
-one typed provider contract; another module supplies a value, a synchronous
-loader, or an asynchronous implementation. Humans and coding agents can work on
-the consumer and provider separately, check their contracts, and exercise the
-feature with a small local fixture.
+One typed provider contract for a value, synchronous loader, or asynchronous
+loader. Swap how a feature acquires its dependencies, require synchronous access
+where needed, and test consumers with local fixtures.
 
 - **[Replaceable acquisition boundaries](#replaceable-acquisition-boundaries).**
-  Put acquisition behind an explicit boundary. A coding agent changing a feature
-  may work with its provider type and tests when they adequately describe the
-  required behavior. Smaller working context depends on those contracts and
-  deliberate context selection.
+  Develop providers and consumers separately against the same contract.
 - **[Typed provider checks and fixtures](#typed-provider-checks-and-fixtures).**
-  Check payload types and required acquisition modes before starting the
-  application. Replace external providers with deterministic fixtures for
-  behavioral checks. These tests check the provider contract, not model quality
-  or real external-provider behavior.
+  Catch payload and acquisition-mode mismatches before invoking a provider.
 - **[Acquisition capabilities for host tooling](#acquisition-capabilities-for-host-tooling).**
-  Inspect acquisition modes without invoking providers. Combine those
-  capabilities with application-defined metadata to build catalogs, validation
-  tools, and execution policies.
+  Inspect available acquisition modes without running the loader.
 
-Use these contracts [inside an LLM agent harness](#inside-an-llm-agent-harness)
-to give agent graph nodes replaceable dependencies and test them independently.
-If every consumer is asynchronous, a plain `() => Promise<T>` may be enough.
-Sas Box is most useful when a shared contract must also express synchronous
-acquisition requirements; it does not manage caching, lifecycle, or graph execution.
-
-See [Harness engineering rationale](HARNESS-ENGINEERING.md) for the mechanisms,
-plain TypeScript alternatives, conditions for adoption, and evidence limits.
+Use it for mixed sync/async provider contracts, including dependencies
+[inside an LLM agent harness](#inside-an-llm-agent-harness).
+For an all-async consumer, a plain `() => Promise<T>` may be enough.
 
 ## Install
 
@@ -81,12 +66,10 @@ void main().catch(error => { console.error(error); process.exitCode = 1; });
 ```
 
 In separate modules, export `Rates`, `createQuote`, and the selected provider.
-A task to change quoting rules can include the feature contract and its tests;
-a task to change rate loading can focus on the provider. The shared boundary
-can support a smaller task context when the contract and fixtures cover the
-behavior being changed. Module layout and context selection remain application
-decisions; the box does not establish that omitted implementation details are
-irrelevant to every task.
+A quoting-rule change belongs with the feature and its tests; a rate-loading
+change belongs with the provider. Include both sides when a change affects
+their shared behavior. The provider contract is an entry point for humans and
+coding agents working on either module.
 
 The example runs without a server, network connection, or dependency container.
 Each invocation acquires rates again; the box does not cache. A cached provider

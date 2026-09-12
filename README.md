@@ -1,6 +1,6 @@
 # sas-box
 
-Small, typed provider contracts for agentic development.
+Typed sync/async acquisition contracts for agentic development, LLM harnesses, and agent graphs.
 
 `sas-box` separates a feature from how its inputs are acquired. A module accepts
 one typed provider contract; another module supplies a value, a synchronous
@@ -8,21 +8,29 @@ loader, or an asynchronous implementation. Humans and coding agents can work on
 the consumer and provider separately, check their contracts, and exercise the
 feature with a small local fixture.
 
-- **[Modularity for context engineering](#modularity-for-context-engineering).**
+- **[Replaceable acquisition boundaries](#replaceable-acquisition-boundaries).**
   Put acquisition behind an explicit boundary. A coding agent changing a feature
-  can work with its provider type and tests, without loading the storage or
-  transport implementation into its working context.
-- **[TypeScript for quick evals](#typescript-for-quick-evals).**
+  may work with its provider type and tests when they adequately describe the
+  required behavior. Smaller working context depends on those contracts and
+  deliberate context selection.
+- **[Typed provider checks and fixtures](#typed-provider-checks-and-fixtures).**
   Check payload types and required acquisition modes before starting the
   application. Replace external providers with deterministic fixtures for
-  behavioral checks.
-- **[Programmable provider capabilities](#programmable-provider-capabilities).**
+  behavioral checks. These tests check the provider contract, not model quality
+  or real external-provider behavior.
+- **[Acquisition capabilities for host tooling](#acquisition-capabilities-for-host-tooling).**
   Inspect acquisition modes without invoking providers. Combine those
   capabilities with application-defined metadata to build catalogs, validation
   tools, and execution policies.
 
 Use these contracts [inside an LLM agent harness](#inside-an-llm-agent-harness)
 to give agent graph nodes replaceable dependencies and test them independently.
+If every consumer is asynchronous, a plain `() => Promise<T>` may be enough.
+Sas Box is most useful when a shared contract must also express synchronous
+acquisition requirements; it does not manage caching, lifecycle, or graph execution.
+
+See [Harness engineering rationale](HARNESS-ENGINEERING.md) for the mechanisms,
+plain TypeScript alternatives, conditions for adoption, and evidence limits.
 
 ## Install
 
@@ -33,7 +41,7 @@ npm install sas-box
 Includes TypeScript declarations, CommonJS and ESM import support, and no runtime
 dependencies.
 
-## Modularity for context engineering
+## Replaceable acquisition boundaries
 
 A shipping feature needs rates; its provider owns how those rates are obtained.
 The feature exposes a quote function and never reaches into provider internals.
@@ -75,14 +83,16 @@ void main().catch(error => { console.error(error); process.exitCode = 1; });
 In separate modules, export `Rates`, `createQuote`, and the selected provider.
 A task to change quoting rules can include the feature contract and its tests;
 a task to change rate loading can focus on the provider. The shared boundary
-makes that smaller context practical. Module layout and context selection remain
-application decisions.
+can support a smaller task context when the contract and fixtures cover the
+behavior being changed. Module layout and context selection remain application
+decisions; the box does not establish that omitted implementation details are
+irrelevant to every task.
 
 The example runs without a server, network connection, or dependency container.
 Each invocation acquires rates again; the box does not cache. A cached provider
 must implement its own sharing and freshness rules.
 
-## TypeScript for quick evals
+## Typed provider checks and fixtures
 
 A synchronous build step requires `SasBox.Sync<Rates>`. An asynchronous feature
 can accept `SasBox.Unknown<Rates>`. These requirements are checked before either
@@ -129,7 +139,7 @@ line. Remove the directive to inspect the diagnostic. Type checking evaluates
 the declared contract; assertions evaluate selected behavior. Neither establishes
 that a real remote provider is correct or available.
 
-## Programmable provider capabilities
+## Acquisition capabilities for host tooling
 
 A host can build tooling from a provider's `alias` and `hasSync()` result
 without loading its value. Application-defined metadata can describe ownership
@@ -236,9 +246,9 @@ void main().catch(error => { console.error(error); process.exitCode = 1; });
 
 The provider acquires a callable client; the node passes the query to that
 client. This keeps state-dependent work explicit because box callbacks take no
-arguments. A coding agent can change the retrieval node with its contract and
-fixtures as the working context, then run the type check and assertions before
-integrating it into the harness.
+arguments. When the contract and fixtures cover the proposed change, a coding
+agent can use them as a focused working context, then run the type check and
+assertions before integrating the node into the harness.
 
 The harness owns node routing, retries, cancellation, and persistence.
 Acquisition runs on every node invocation; share a client in the provider when

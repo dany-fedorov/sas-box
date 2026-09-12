@@ -1,7 +1,7 @@
 {
   "name": "sas-box",
   "version": "0.1.1",
-  "description": "Typed sync and async provider contracts for modular features, quick evals, and programmable tooling.",
+  "description": "Typed sync/async acquisition contracts with inspectable provider capabilities for TypeScript apps and LLM harnesses.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

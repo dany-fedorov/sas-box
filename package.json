@@ -1,7 +1,7 @@
 {
   "name": "sas-box",
-  "version": "0.1.0",
-  "description": "Explicit synchronous and asynchronous acquisition capabilities.",
+  "version": "0.1.1",
+  "description": "Declare sync and async acquisition capabilities for agent tools and TypeScript plugin hosts.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -11,7 +11,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "bun test",
@@ -29,8 +30,13 @@
     "access": "public"
   },
   "keywords": [
-    "sas",
-    "box"
+    "typescript",
+    "sync",
+    "async",
+    "provider",
+    "plugin",
+    "agent",
+    "capability"
   ],
   "author": "Dany Fedorov",
   "license": "MIT",

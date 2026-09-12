@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Document agent host acquisition contracts, complete tool-provider examples,
+  installation, and operational limits.
+- Include release notes in the npm package.
+
 ## 0.1.0
 
 - Correct async access and sync-first resolution to return

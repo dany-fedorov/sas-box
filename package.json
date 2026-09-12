@@ -36,6 +36,11 @@
     "provider",
     "plugin",
     "agent",
+    "agentic",
+    "harness",
+    "llm",
+    "graph",
+    "agent-graph",
     "capability"
   ],
   "author": "Dany Fedorov",

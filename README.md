@@ -21,6 +21,9 @@ feature with a small local fixture.
   capabilities with application-defined metadata to build catalogs, validation
   tools, and execution policies.
 
+Use these contracts [inside an LLM agent harness](#inside-an-llm-agent-harness)
+to give agent graph nodes replaceable dependencies and test them independently.
+
 ## Install
 
 ```sh
@@ -174,6 +177,73 @@ sync-only host can reject an incompatible provider before calling it.
 `hasSync()` reports a capability, not readiness, cost, health, or permission.
 Use the return value of `assertHasSync()` when the caller needs a statically
 narrowed sync provider.
+
+## Inside an LLM agent harness
+
+An agent harness coordinates a large language model (LLM), tools, and their
+execution environment.
+An agent workflow graph organizes that work into nodes and routing edges.
+`sas-box` supplies typed dependencies to those nodes: configuration, context,
+or clients acquired through a local fixture or an asynchronous provider.
+
+This retrieval node receives its query from graph state and obtains a search
+client through a provider. Its input and output stay the same when the provider
+changes.
+
+```ts
+import assert from 'node:assert/strict';
+import { SasBox } from 'sas-box';
+
+type Retriever = { search(query: string): Promise<readonly string[]> };
+type RetrievalState = { query: string };
+
+function createRetrieveNode(provider: SasBox.Unknown<Retriever>) {
+  return async (state: RetrievalState): Promise<{ documents: readonly string[] }> => {
+    const retriever = await provider.async();
+    return { documents: await retriever.search(state.query) };
+  };
+}
+
+async function main() {
+  const fixture = SasBox.fromValue<Retriever>({
+    async search(query) {
+      return query === 'refunds' ? ['Refunds are available within 30 days.'] : [];
+    },
+  }, 'fixture-retriever');
+
+  // In-memory async initialization; an application can create its remote client here.
+  let initializations = 0;
+  const initialized = SasBox.fromAsync<Retriever>(async () => {
+    initializations++;
+    const documents = new Map([
+      ['refunds', ['Refunds are available within 30 days.']],
+    ]);
+    return { async search(query) { return documents.get(query) ?? []; } };
+  }, 'initialized-retriever');
+
+  const expected = { documents: ['Refunds are available within 30 days.'] };
+  assert.equal(initialized.hasSync(), false);
+  assert.equal(initializations, 0);
+  assert.deepEqual(await createRetrieveNode(fixture)({ query: 'refunds' }), expected);
+  assert.deepEqual(await createRetrieveNode(initialized)({ query: 'refunds' }), expected);
+  assert.equal(initializations, 1);
+  assert.deepEqual(await createRetrieveNode(fixture)({ query: 'unknown' }), { documents: [] });
+  console.log('Retrieval node passed with local and asynchronous providers');
+}
+
+void main().catch(error => { console.error(error); process.exitCode = 1; });
+```
+
+The provider acquires a callable client; the node passes the query to that
+client. This keeps state-dependent work explicit because box callbacks take no
+arguments. A coding agent can change the retrieval node with its contract and
+fixtures as the working context, then run the type check and assertions before
+integrating it into the harness.
+
+The harness owns node routing, retries, cancellation, and persistence.
+Acquisition runs on every node invocation; share a client in the provider when
+its lifetime should span multiple calls. The example needs no graph framework,
+model API, or network connection.
 
 ## Supply separate implementations
 

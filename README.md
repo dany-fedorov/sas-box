@@ -116,10 +116,6 @@ All exports come from `sas-box`.
 | `new SasBox.Async(async, alias?)` | Async-only acquisition |
 | `new SasBox.Unknown(syncOrUndefined, async, alias?)` | A capability determined at runtime |
 
-The classes are also exported as `SasBoxSync`, `SasBoxAsync`, and
-`SasBoxUnknown`. `SasBox.Unknown.fromSync` and `.fromAsync` provide the
-same factories as their namespace counterparts.
-
 | Member | Behavior |
 | --- | --- |
 | `sync` | A callback returning exactly `T`, or `undefined` |

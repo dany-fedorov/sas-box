@@ -1,6 +1,6 @@
 {
   "name": "sas-box",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed sync/async acquisition contracts with inspectable provider capabilities for TypeScript apps and LLM harnesses.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

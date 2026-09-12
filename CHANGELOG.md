@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-09-12
+
+- Refresh the npm README with a concise acquisition-contract value proposition,
+  typed fixtures, and practical LLM harness and agent graph examples.
+- Make the documentation self-contained and remove positioning audit notes.
+- No runtime or public API changes.
+
 ## 0.1.1
 
 - Document agent host acquisition contracts, complete tool-provider examples,
